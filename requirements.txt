@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+SQLAlchemy==2.0.36
+psycopg[binary,pool]==3.2.3
+aiokafka==0.10.0
+orjson==3.10.7
+psycopg_pool==3.2.3

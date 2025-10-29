@@ -1,0 +1,19 @@
+# ---- Archivos específicos ----
+test.csv
+
+# ---- Node.js ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# ---- Otros ----
+.DS_Store
+*.log

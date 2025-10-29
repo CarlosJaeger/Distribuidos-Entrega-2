@@ -1,0 +1,120 @@
+services:
+  # --- Apache Kafka (KRaft, 1 nodo) ---
+  kafka:
+    image: confluentinc/cp-kafka:8.1.0
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # un solo nodo → replicación en 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+  # --- Schema Registry ---
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.1.0
+    container_name: schema-registry
+    hostname: schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+
+  # --- Kafdrop(Dashboard) ---
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: kafka:9092
+
+
+  # --- Base de datos PostgreSQL ---
+  postgres:
+    build: ./database
+    container_name: postgres_db
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=1234
+      - POSTGRES_DB=yahoo_dataset
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # --- Inicialización de tópicos ---
+  init-topics:
+    image: confluentinc/cp-kafka:8.1.0
+    container_name: init-topics
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./topics.sh:/topics.sh
+    entrypoint: ["/bin/bash", "/topics.sh"]
+
+  # --- Generador de tráfico ---
+  traffic_gen:
+    build:
+      context: .
+      dockerfile: traffic_gen/Dockerfile
+    container_name: traffic_gen
+    depends_on:
+      postgres:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      init-topics:
+        condition: service_completed_successfully
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - PENDING_TOPIC=questions.pending
+      - DB_HOST=postgres
+      - DB_NAME=yahoo_dataset
+      - DB_USER=user
+      - DB_PASS=1234
+  llm_app:
+    build: ./llm_saving
+    container_name: llm_app
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      init-topics:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"   
+  flink_quality:
+    build:
+      context: ./flink_quality
+      dockerfile: Dockerfile
+    container_name: flink_quality
+    depends_on:
+      kafka:
+        condition: service_healthy
+      init-topics:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+
